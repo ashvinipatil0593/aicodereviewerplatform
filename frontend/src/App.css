@@ -1,0 +1,140 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: sans-serif;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 200px 1fr 1.5fr;
+  height: 100vh;
+}
+
+/* SIDEBAR */
+.sidebar {
+  background: #0b1120;
+  color: white;
+  padding: 20px;
+}
+
+.select,
+.btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+}
+
+/* EDITOR */
+.editor-panel {
+  background: #0f172a;
+}
+
+/* REVIEW */
+.review-panel {
+  background: #f8fafc;
+  padding: 15px;
+  overflow: hidden;
+}
+
+.review-title {
+  margin-top: 0;
+}
+
+/* MAIN RESULT PARTITION */
+.result-layout {
+  height: calc(100vh - 70px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* UPPER REVIEW PART */
+.review-result-section {
+  flex: 1.2;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+/* LOWER TERMINAL PART */
+.terminal-section {
+  flex: 0.8;
+  background: #020617;
+  color: white;
+  border-radius: 12px;
+  padding: 12px;
+  border: 1px solid #1e293b;
+  overflow-y: auto;
+}
+
+.terminal-header {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #93c5fd;
+  margin-bottom: 10px;
+}
+
+.terminal-block {
+  margin-bottom: 12px;
+}
+
+.terminal-block h3 {
+  color: white;
+  font-size: 15px;
+  margin: 8px 0;
+}
+
+/* CARD */
+.card {
+  background: white;
+  padding: 12px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+}
+
+pre {
+  background: #0b1736;
+  color: white;
+  padding: 10px;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* SCORE */
+.score-line {
+  display: flex;
+  justify-content: space-between;
+  margin: 6px 0;
+}
+
+.score-good {
+  color: green;
+  font-weight: bold;
+}
+
+.score-medium {
+  color: orange;
+  font-weight: bold;
+}
+
+.score-bad {
+  color: red;
+  font-weight: bold;
+}
+
+.overall-score {
+  margin-top: 12px;
+  padding: 14px;
+  background: linear-gradient(90deg, #1e3a8a, #2563eb);
+  color: white;
+  border-radius: 10px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+}

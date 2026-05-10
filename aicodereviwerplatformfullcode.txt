@@ -1,0 +1,578 @@
+ai_engine.py
+import requests
+import re
+from judge0_engine import run_code
+
+OLLAMA_URL = "http://localhost:11434/api/generate"
+
+def extract(text, key):
+    match = re.search(f"{key}:(.*)", text)
+    return match.group(1).strip() if match else ""
+
+def analyze_code(code, language, expected_output=""):
+    try:
+        output = run_code(code, language)
+
+        prompt = f"""
+Analyze this {language} code.
+
+Return:
+Suggestion:
+Explanation:
+Bug:
+Fix:
+Score:
+
+Code:
+{code}
+"""
+
+        res = requests.post(
+            OLLAMA_URL,
+            json={"model": "mistral", "prompt": prompt, "stream": False}
+        )
+
+        text = res.json().get("response", "")
+
+        return {
+            "suggestion": extract(text, "Suggestion") or "Improve code",
+            "explanation": extract(text, "Explanation") or "Looks fine",
+            "bug": extract(text, "Bug") or "No bug",
+            "fix": extract(text, "Fix") or "No fix",
+            "score": extract(text, "Score") or "7/10",
+            "output": output,
+            "expected_output": expected_output or "Not provided",
+            "comparison": (
+                "✅ Correct Output"
+                if expected_output and output.strip() == expected_output.strip()
+                else "❌ Wrong Output" if expected_output else "Not checked"
+            )
+        }
+
+    except Exception as e:
+        return {
+            "suggestion": "Error",
+            "explanation": str(e),
+            "bug": "Execution failed",
+            "fix": "Check backend",
+            "score": "0/10",
+            "output": "Error",
+            "expected_output": "N/A",
+            "comparison": "Error"
+        }
+
+database.py
+
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+
+DATABASE_URL = "sqlite:///./code_reviews.db"
+
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False}
+)
+
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine
+)
+
+Base = declarative_base()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+judge0_engine.py
+import requests
+
+API_URL = "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true"
+
+HEADERS = {
+    "content-type": "application/json",
+    "X-RapidAPI-Key": "YOUR_API_KEY_HERE",
+    "X-RapidAPI-Host": "Judge0 CE"
+}
+
+LANGUAGE_MAP = {
+    "python": 71,
+    "javascript": 63,
+    "c": 50,
+    "cpp": 54,
+    "java": 62
+}
+
+def run_code(code, language):
+    try:
+        payload = {
+            "source_code": code,
+            "language_id": LANGUAGE_MAP.get(language, 71)
+        }
+
+        res = requests.post(API_URL, json=payload, headers=HEADERS)
+        data = res.json()
+
+        return (
+            data.get("stdout")
+            or data.get("stderr")
+            or data.get("compile_output")
+            or "No output"
+        )
+
+    except Exception as e:
+        return str(e)
+
+
+main.py
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+from ai_engine import analyze_code
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class CodeRequest(BaseModel):
+    code: str
+    language: str
+    expected_output: str = ""
+
+@app.post("/review-code")
+def review_code(req: CodeRequest):
+    return analyze_code(req.code, req.language, req.expected_output)
+
+models.py
+
+from sqlalchemy import Column, Integer, String, Text
+from database import Base
+
+class CodeReview(Base):
+    __tablename__ = "code_reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(Text, nullable=False)
+    language = Column(String, nullable=False)
+    suggestion = Column(Text)
+    explanation = Column(Text)
+    bug = Column(Text)
+    score = Column(String)
+
+
+CodeEditor.js
+import React from "react";
+import Editor from "@monaco-editor/react";
+
+let timeout; // debounce variable
+
+function CodeEditor({ code, setCode, reviewCode }) {
+
+  const handleChange = (value) => {
+    setCode(value || "");
+
+    // 🔥 DEBOUNCE LIVE REVIEW
+    clearTimeout(timeout);
+
+    timeout = setTimeout(() => {
+      reviewCode(value);
+    }, 800); // delay
+  };
+
+  return (
+    <div className="editor">
+
+      <h2>Code Editor</h2>
+
+      <div style={{
+        borderRadius: "8px",
+        overflow: "hidden",
+        border: "1px solid #ddd"
+      }}>
+        <Editor
+          height="450px"
+          defaultLanguage="javascript"
+          value={code}
+          onChange={handleChange}
+          theme="vs-dark"
+          options={{
+            fontSize: 14,
+            minimap: { enabled: false },
+            automaticLayout: true,
+            scrollBeyondLastLine: false
+          }}
+        />
+      </div>
+
+      <button
+        onClick={() => reviewCode(code)}
+        style={{
+          marginTop: "20px",
+          padding: "10px 20px",
+          background: "#2563eb",
+          color: "white",
+          border: "none",
+          borderRadius: "6px",
+          cursor: "pointer",
+          fontSize: "16px"
+        }}
+      >
+        Review Code
+      </button>
+
+    </div>
+  );
+}
+
+export default CodeEditor;
+
+FileUpload.js
+
+import React from "react";
+
+function FileUpload({ setCode }) {
+
+  const handleFile = (event) => {
+
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = function(e) {
+      setCode(e.target.result);
+    };
+
+    reader.readAsText(file);
+  };
+
+  return (
+
+    <div style={{marginBottom:"20px"}}>
+
+      <label
+        style={{
+          padding:"8px 14px",
+          background:"#2563eb",
+          color:"white",
+          borderRadius:"6px",
+          cursor:"pointer",
+          fontSize:"14px"
+        }}
+      >
+        Upload Code File
+        <input
+          type="file"
+          onChange={handleFile}
+          style={{display:"none"}}
+        />
+      </label>
+
+    </div>
+
+  );
+
+}
+
+export default FileUpload;
+
+ReviewPanel.js
+
+import React from "react";
+
+function ReviewPanel({ review, loading }) {
+
+  if (loading) {
+    return (
+      <div className="review">
+        <h2>AI Review</h2>
+        <p>⏳ Analyzing code...</p>
+      </div>
+    );
+  }
+
+  if (!review) {
+    return (
+      <div className="review">
+        <h2>AI Review</h2>
+        <p>No review yet</p>
+      </div>
+    );
+  }
+
+  return (
+
+    <div className="review">
+
+      <h2>AI Review</h2>
+
+      <p><b>Suggestion:</b> {review.suggestion}</p>
+
+      <p><b>Explanation:</b> {review.explanation}</p>
+
+      <p><b>Bug:</b> {review.bug_detection}</p>
+
+      <p><b>Score:</b> {review.score}</p>
+
+    </div>
+
+  );
+
+}
+
+export default ReviewPanel;
+
+App.css
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+}
+
+/* SIDEBAR */
+.sidebar {
+  width: 20%;
+  background: #0f172a;
+  color: white;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar h2 {
+  color: #38bdf8;
+}
+
+.sidebar select,
+.sidebar input,
+.sidebar button {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  border: none;
+}
+
+.sidebar button {
+  background: linear-gradient(to right, #06b6d4, #3b82f6);
+  color: white;
+  cursor: pointer;
+}
+
+/* CENTER */
+.center {
+  width: 40%;
+  background: #111827;
+  color: white;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* OUTPUT */
+.output-box {
+  background: black;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 6px;
+}
+
+/* RIGHT PANEL */
+.panel {
+  width: 40%;
+  background: #f3f4f6;
+  padding: 15px;
+  overflow-y: auto;
+}
+
+.box {
+  background: white;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+App.js
+
+import React, { useState } from "react";
+import Editor from "@monaco-editor/react";
+import "./App.css";
+
+function App() {
+  const [code, setCode] = useState("// Write your code here...");
+  const [language, setLanguage] = useState("");
+  const [result, setResult] = useState(null);
+  const [expectedOutput, setExpectedOutput] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleRun = async () => {
+    setLoading(true);
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/review-code", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          code,
+          language,
+          expected_output: expectedOutput
+        })
+      });
+
+      const data = await res.json();
+      setResult(data);
+    } catch {
+      alert("Backend not running");
+    }
+
+    setLoading(false);
+  };
+
+  return (
+    <div className="app">
+
+      {/* SIDEBAR */}
+      <div className="sidebar">
+        <h2>⚡ DevAudit AI</h2>
+
+        <select onChange={(e) => setLanguage(e.target.value)}>
+          <option value="">Choose Language</option>
+          <option value="python">Python</option>
+          <option value="javascript">JavaScript</option>
+          <option value="c">C</option>
+          <option value="cpp">C++</option>
+          <option value="java">Java</option>
+        </select>
+
+        <input
+          placeholder="Expected Output"
+          value={expectedOutput}
+          onChange={(e) => setExpectedOutput(e.target.value)}
+        />
+
+        <button onClick={handleRun}>🚀 Run Audit</button>
+      </div>
+
+      {/* CENTER */}
+      <div className="center">
+        <h3>✍️ Write Code</h3>
+
+        <Editor
+          height="60vh"
+          theme="vs-dark"
+          language={language || "plaintext"}
+          value={code}
+          onChange={(value) => setCode(value)}
+          options={{
+            automaticLayout: true
+          }}
+        />
+
+        <div className="output-box">
+          <h4>📤 Output</h4>
+          <pre>{result?.output || "Run code"}</pre>
+
+          <h4>🎯 Expected</h4>
+          <pre>{expectedOutput || "Enter expected output"}</pre>
+
+          <p>{result?.comparison}</p>
+        </div>
+      </div>
+
+      {/* RIGHT PANEL */}
+      <div className="panel">
+        <h3>🧠 AI Reviewer</h3>
+
+        {loading && <p>⏳ Analyzing...</p>}
+
+        {result && (
+          <>
+            <div className="box">
+              <b>Suggestion</b>
+              <p>{result.suggestion}</p>
+            </div>
+
+            <div className="box">
+              <b>Explanation</b>
+              <p>{result.explanation}</p>
+            </div>
+
+            <div className="box">
+              <b>Bug</b>
+              <p>{result.bug}</p>
+            </div>
+
+            <div className="box">
+              <b>Fix</b>
+              <p>{result.fix}</p>
+            </div>
+
+            <div className="box">
+              <b>Score</b>
+              <p>{result.score}</p>
+            </div>
+          </>
+        )}
+      </div>
+
+    </div>
+  );
+}
+
+export default App;
+
+App.test.js
+import { render, screen } from '@testing-library/react';
+import App from './App';
+
+test('renders learn react link', () => {
+  render(<App />);
+  const linkElement = screen.getByText(/learn react/i);
+  expect(linkElement).toBeInTheDocument();
+});
+
+index.css
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+}
+
+index.js
+
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App";
+
+// 🔇 Hide ResizeObserver warning
+const originalError = console.error;
+console.error = (...args) => {
+  if (args[0]?.includes("ResizeObserver loop")) return;
+  originalError(...args);
+};
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+
+
+
+
